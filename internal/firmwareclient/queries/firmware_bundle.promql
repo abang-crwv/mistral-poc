@@ -1,5 +1,0 @@
-baremetal_node_fwbundle_info
-  * on (region, deviceslot) group_left()
-  baremetal_node_physical_topology_labels{
-    label_ds_coreweave_com_physical_topology_rack_name="{rack_name}"
-  }
