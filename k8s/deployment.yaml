@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shell-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shell-test
+  template:
+    metadata:
+      labels:
+        app: shell-test
+    spec:
+      containers:
+      - name: alpine
+        image: alpine:latest
+        command: ["sleep", "infinity"]
