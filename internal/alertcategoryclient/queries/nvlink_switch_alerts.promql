@@ -1,0 +1,7 @@
+max by (cluster_org, cluster, zone, deviceslot, severity, alertname) (
+  ALERTS{
+    alertstate="firing",
+    nvlink_domain=~"{nvlink_domain}",
+    alertname=~"HLCCNVLinkSwitchDeviceInTriage|.*NVLinkSwitch.*|.*NVSwitch.*"
+  }
+)

@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>qac — canary verification flow</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --panel: #121826;
+    --panel-2: #0e1420;
+    --ink: #e6edf6;
+    --ink-dim: #9fb0c3;
+    --line: #233047;
+    --accent: #60a5fa;
+    --live: #34d399;
+    --planned: #f59e0b;
+    --fail: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    padding: 22px 28px 14px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #0e1626 0%, var(--bg) 100%);
+  }
+  header h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: .2px; }
+  header h1 .iter { font-size: 12px; font-weight: 600; color: var(--live); background:#0f2e1d; border:1px solid var(--live); padding:2px 8px; border-radius:20px; vertical-align:middle; margin-left:8px; }
+  header p { margin: 0; color: var(--ink-dim); max-width: 1000px; }
+  header code { color: var(--accent); background: #0c1422; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .wrap { display: flex; min-height: calc(100vh - 92px); }
+  .main { flex: 1 1 auto; min-width: 0; padding: 18px 24px 60px; }
+  .side {
+    flex: 0 0 350px;
+    border-left: 1px solid var(--line);
+    background: var(--panel-2);
+    padding: 20px 20px 40px;
+    position: sticky; top: 0; align-self: flex-start;
+    height: 100vh; overflow-y: auto;
+  }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tab {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink-dim);
+    padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 14px;
+    transition: all .12s ease; text-align: left;
+  }
+  .tab:hover { color: var(--ink); border-color: #34507a; }
+  .tab.active { color: #06140d; background: var(--live); border-color: var(--live); font-weight: 600; }
+  .tab small { display:block; font-weight: 400; font-size: 11px; opacity:.8; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .caption { color: var(--ink-dim); margin: 0 0 12px; font-size: 13.5px; }
+  .caption b { color: var(--ink); }
+  .diagram {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+    overflow: auto;
+  }
+  .diagram svg { max-width: 100%; height: auto; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 0 0 14px; font-size: 12.5px; color: var(--ink-dim); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 26px; height: 14px; border-radius: 4px; display: inline-block; }
+  .sw.live { background: #0f2e1d; border: 1.5px solid var(--live); }
+  .sw.planned { background: #2a2410; border: 1.5px dashed var(--planned); }
+  .sw.fail { background: #2a1215; border: 1.5px solid var(--fail); }
+  .sw.dec { background: #16243a; border: 1.5px solid var(--accent); transform: rotate(45deg); width:13px; height:13px;}
+
+  .side h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--ink-dim); margin: 0 0 10px; }
+  .side .hint { color: var(--ink-dim); font-size: 13px; }
+  #detail-title { font-size: 16px; font-weight: 600; margin: 0 0 6px; color: var(--ink); }
+  #detail-badge {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .4px;
+    padding: 2px 8px; border-radius: 20px; margin-bottom: 10px; text-transform: uppercase;
+  }
+  #detail-badge.implemented { background: #0f2e1d; color: var(--live); border:1px solid var(--live); }
+  #detail-badge.planned { background: #2a2410; color: var(--planned); border:1px solid var(--planned); }
+  #detail-badge.partial { background: #1e2433; color: var(--accent); border:1px solid var(--accent); }
+  #detail-body { font-size: 13.5px; color: var(--ink); }
+  #detail-body code { background:#0c1422; color:var(--accent); padding:1px 4px; border-radius:4px; font-size:12px;}
+  .tip { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--ink-dim); font-size: 12.5px; }
+  .tip code { background:#0c1422; color:var(--accent); padding:1px 5px; border-radius:4px; }
+  .you-are-here {
+    margin: 0 0 14px; padding: 10px 14px; border-radius: 10px;
+    background: #0f2e1d22; border: 1px solid var(--live);
+    color: #c9f3df; font-size: 13px;
+  }
+  .you-are-here code { background:#0c1422; color:var(--live); padding:1px 4px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>qac — firmware-release canary verification flow <span class="iter">updated for iter-4c</span></h1>
+  <p>The logical movement of a canary, not the call graph. <b>Start at &ldquo;Macro flow.&rdquo;</b> A run is born when an operator adds racks; the system enriches it with discovered facts, then the <b>engine walks the template</b> — it runs every <code>probe_type</code> step it knows how to run (today: <code>alert_baseline</code> and <code>fact_baseline</code>, both gatherers), skips <code>action.tool</code>-shaped steps, and halts at the first operator-gated step (<code>evidence_review</code>). A probe error is recorded as <b>StepFailed</b> but the walk keeps going — qac <b>observes</b> the rack going through flcc/rlcc, it does not gate it. Click any node for detail.</p>
+</header>
+
+<div class="wrap">
+  <div class="main">
+    <div class="tabs">
+      <button class="tab active" data-target="macro">1 · Macro flow<small>add racks → walk → operator gate</small></button>
+      <button class="tab" data-target="rail">2 · Canary step rail<small>14 steps · what runs vs declared</small></button>
+      <button class="tab" data-target="engine">3 · Engine &amp; walk<small>how the walk loop runs (live)</small></button>
+      <button class="tab" data-target="check">4 · Checkpoint model<small>the verdict path (iter-4d+)</small></button>
+    </div>
+
+    <div class="legend">
+      <span><i class="sw live"></i> Live today (iter-4a + 4b + 4c)</span>
+      <span><i class="sw planned"></i> Designed, not wired (iter-4d+)</span>
+      <span><i class="sw fail"></i> Failure terminal</span>
+      <span><i class="sw dec"></i> Decision</span>
+    </div>
+
+    <section class="panel active" id="panel-macro">
+      <p class="caption"><b>What happens after &ldquo;add racks.&rdquo;</b> The green box runs today: <code>POST /api/runs</code> creates the run, discovers facts, then tail-calls <code>engine.Kick</code> — an async goroutine that <b>walks</b> the template, running every probe it has registered (<code>alert_probe</code>, <code>fact_probe</code>) and skipping <code>action.tool</code>-shaped steps until it hits an <b>operator-gated</b> step kind (<code>review</code> / <code>ai_assess</code> / <code>signoff</code>). A healthy walk ends parked at <b>evidence_review</b>; the amber box is iter-4d+ (operator-advance endpoint, real checkpoint evaluator, assertion probes, sign-off).</p>
+      <div class="diagram"><div id="d-macro"></div></div>
+    </section>
+
+    <section class="panel" id="panel-rail">
+      <p class="caption"><b>The canary itself</b> — 14 ordered steps (<code>templates/firmware-release-canary.yaml</code> v4). <b>Steps 1 and 2 (<code>alert_baseline</code> + <code>fact_baseline</code>) run today</b> — both gatherers, captured as evidence. Steps 3&ndash;11 are <code>action.tool</code>-shaped, so the engine <b>skips</b> them (no probe wired) and continues the walk. Step 12 (<code>evidence_review</code>) is the first <b>operator-gated</b> step (kind: review) — the walk halts there until an operator-advance endpoint exists (iter-4d).</p>
+      <div class="diagram"><div id="d-rail"></div></div>
+    </section>
+
+    <section class="panel" id="panel-engine">
+      <p class="caption"><b>How the walk actually runs</b> (live, iter-4c). <code>Kick</code> spawns a goroutine on a background context; <code>runOnce</code> is a <b>loop</b> that, on each iteration, re-reads the event log (persistence is truth), picks the next runnable step via <code>findNextRunnableStep</code>, and routes on its kind: halt at <code>review</code>/<code>ai_assess</code>/<code>signoff</code>, skip <code>action.tool</code>-shaped probes (no <code>probe_type</code>), or run a registered gatherer. A probe error → <b>StepFailed</b> and the loop <b>continues</b> (observability framing); a DB read/write failure halts the walk.</p>
+      <div class="diagram"><div id="d-engine"></div></div>
+    </section>
+
+    <section class="panel" id="panel-check">
+      <p class="caption"><b>The verdict path</b> — planned (iter-4d+). <code>alert_probe</code> and <code>fact_probe</code> are <i>gatherers</i> (evidence, no verdict). The remaining steps will be <i>assertion</i> / <i>action</i> probes: they&rsquo;ll run <code>action.tool</code> and evaluate a per-rack <b>checkpoint</b> (<code>success_when</code> / <code>fail_when</code> / blockers) into a verdict that rolls up into run status. Needs the checkpoint expression evaluator.</p>
+      <div class="diagram"><div id="d-check"></div></div>
+    </section>
+  </div>
+
+  <aside class="side">
+    <h2>Node detail</h2>
+    <div class="you-are-here">▶ <b>You are here today:</b> a healthy run walks <code>alert_baseline</code> → <code>fact_baseline</code> (both as evidence), <b>skips</b> all the <code>action.tool</code> steps (3&ndash;11), and <b>halts</b> at <code>evidence_review</code> (kind: review). A probe error becomes a <code>StepFailed</code> event &mdash; the walk keeps going. The run row&rsquo;s <code>status</code> stays at <b>running</b> at the halt; an iter-4d operator-advance endpoint resumes the walk past the gate.</div>
+    <div id="detail">
+      <p class="hint">Click any node in the diagram to see what it does, the exact event / tool / condition, and whether it&rsquo;s wired today or still on the roadmap.</p>
+    </div>
+    <div class="tip">
+      <b>Serve it:</b> <code>cd docs &amp;&amp; python3 -m http.server 9000</code> then open <code>http://localhost:9000/qac-flow.html</code>. Opening the file directly also works. Needs network for the Mermaid CDN.
+    </div>
+  </aside>
+</div>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+mermaid.initialize({
+  startOnLoad: false,
+  securityLevel: 'loose',
+  theme: 'dark',
+  flowchart: { curve: 'basis', htmlLabels: true, nodeSpacing: 45, rankSpacing: 52 },
+  themeVariables: {
+    background: '#121826',
+    primaryColor: '#16243a',
+    lineColor: '#3b4b66',
+    fontSize: '13.5px',
+  },
+});
+
+const CLASSES = `
+classDef live fill:#0f2e1d,stroke:#34d399,stroke-width:1.5px,color:#d7f7e8;
+classDef planned fill:#241f10,stroke:#f59e0b,stroke-width:1.5px,color:#fde6b8,stroke-dasharray:6 4;
+classDef fail fill:#2a1215,stroke:#f87171,stroke-width:1.5px,color:#fed1d1;
+classDef note fill:#0e1420,stroke:#2a3a55,color:#9fb0c3,stroke-dasharray:2 3;
+`;
+
+// ============ Diagram 1: MACRO FLOW ============
+const MACRO = `flowchart TD
+  subgraph LIVE["🟢 LIVE TODAY · iter-4a + 4b + 4c"]
+    direction TB
+    op["👤 Operator adds racks<br/><b>bundle_tag · canary_racks · requester</b>"]
+    val{"Validate body &amp; inputs"}
+    rc["<b>RunCreated</b> → status: <b>pending</b>"]
+    opf["Promote operator inputs → run facts<br/><i>bundle_tag, requester</i>"]
+    res["Resolve each rack via inventory"]
+    gate{"All racks<br/>resolved?"}
+    fail["<b>FactsDiscoveryFailed</b><br/>→ status: <b>failed</b> · 422"]
+    rackf["Emit per-rack inventory facts"]
+    kick["Tail-call <b>engine.Kick</b> · return <b>201</b><br/><i>async · 422 path skips Kick</i>"]
+
+    subgraph ENG["⚙️ async engine goroutine · iter-4c — walks the template"]
+      direction TB
+      loop(("loop: re-read events"))
+      find{"findNextRunnableStep<br/><i>seen + skipped aware</i>"}
+      none(["no more runnable steps<br/>→ idle exit"])
+      kindq{"step.Kind?"}
+      gateh(["⏸ <b>halts</b> at first operator-gated step<br/>review / ai_assess / signoff<br/><i>= evidence_review today</i>"])
+      skipa["skip action.tool step<br/><i>no probe_type → add to loop-local skipped</i>"]
+      reg{"registry.Get(probe_type)"}
+      ss["<b>StepStarted</b> → status: <b>running</b>"]
+      prun["probe.Run · gatherer<br/><i>alert_probe · fact_probe</i>"]
+      ok{"probe ok?"}
+      sf["<b>StepFailed</b> · walk continues<br/><i>status flips to failed (projection)</i>"]
+      ev["PutEvidence (probe JSON)"]
+      sc["<b>StepCompleted</b> · no verdict"]
+    end
+  end
+
+  subgraph PLAN["🟡 PLANNED · iter-4d+"]
+    direction TB
+    advance["operator-advance endpoint<br/><i>POST /api/runs/&#123;id&#125;/advance</i>"]
+    tool["action.tool steps (metrics / flcc / rlcc)<br/>+ checkpoint evaluator"]
+    assert["assertion probes → <b>verdicts</b><br/>worst-verdict roll-up"]
+    term(["status: passed / warning / failed"])
+    sign["operator_signoff"]
+    signed(["🏁 status: <b>signed_off</b>"])
+    sse["live updates via SSE<br/><i>(no polling)</i>"]
+  end
+
+  detail["👁 Operator polls<br/><i>GET /api/runs/&#123;id&#125;</i> → run + events"]
+  evget["follows evidence URL<br/><i>GET …/evidence/&#123;eid&#125;</i>"]
+
+  op --> val
+  val -->|valid| rc
+  val -->|bad shape / template / rack| xreq["400 / 422 rejected"]
+  rc --> opf --> res --> gate
+  gate -->|any unresolved| fail
+  gate -->|all resolved| rackf --> kick
+  kick -. "goroutine · bg ctx · sem(8)" .-> loop
+  kick --> detail
+  loop --> find
+  find -->|none| none
+  find -->|step| kindq
+  kindq -->|review / ai_assess / signoff| gateh
+  kindq -->|probe · no probe_type| skipa
+  skipa --> loop
+  kindq -->|probe · probe_type set| reg
+  reg -->|missing| sf
+  reg -->|found| ss --> prun --> ok
+  ok -->|error / source down / panic| sf
+  sf -. continue .-> loop
+  ok -->|success| ev --> sc -. continue .-> loop
+  gateh -. "iter-4d advance endpoint" .-> advance
+  advance --> tool --> assert --> term --> sign --> signed
+  detail --> evget
+  sc -. "evidence_id" .-> evget
+  fail --> detail
+  sf --> detail
+
+  class op,val,rc,opf,res,gate,rackf,kick,loop,find,none,kindq,gateh,skipa,reg,ss,prun,ok,ev,sc,detail,evget live
+  class fail,sf fail
+  class advance,tool,assert,term,sign,signed,sse planned
+  class xreq note
+
+  click op call showDetail("m_op")
+  click val call showDetail("m_val")
+  click rc call showDetail("m_rc")
+  click opf call showDetail("m_opf")
+  click res call showDetail("m_res")
+  click gate call showDetail("m_gate")
+  click fail call showDetail("m_fail")
+  click rackf call showDetail("m_rackf")
+  click kick call showDetail("m_kick")
+  click loop call showDetail("m_loop")
+  click find call showDetail("m_find")
+  click none call showDetail("m_none")
+  click kindq call showDetail("m_kindq")
+  click gateh call showDetail("m_gateh")
+  click skipa call showDetail("m_skipa")
+  click reg call showDetail("m_reg")
+  click ss call showDetail("m_ss")
+  click prun call showDetail("m_prun")
+  click ok call showDetail("m_ok")
+  click sf call showDetail("m_sf")
+  click ev call showDetail("m_ev")
+  click sc call showDetail("m_sc")
+  click advance call showDetail("m_advance")
+  click tool call showDetail("m_tool")
+  click assert call showDetail("m_assert")
+  click term call showDetail("m_term")
+  click sign call showDetail("m_sign")
+  click signed call showDetail("m_signed")
+  click detail call showDetail("m_detail")
+  click evget call showDetail("m_evget")
+${CLASSES}`;
+
+// ============ Diagram 2: CANARY STEP RAIL ============
+const RAIL = `flowchart TD
+  s1["<b>1 · alert_baseline</b> &nbsp;<i>probe_type: alert_probe · gatherer</i><br/>✅ <b>RUNS TODAY</b> → alert evidence · no verdict"]
+  s_fact["<b>2 · fact_baseline</b> &nbsp;<i>probe_type: fact_probe · gatherer</i><br/>✅ <b>RUNS TODAY</b> → per-rack inventory facts · no verdict"]
+  s2["<b>3 · baseline_pre</b> &nbsp;<i>action.tool</i><br/>metrics · mode=pre · ✓ stdout 'baseline_ok'"]
+  s3["<b>4 · zap_canary</b> &nbsp;<i>action.tool</i><br/>flcc node-zap --bundle · ✓ completed · ✗ failed · ⚠ halted"]
+  s4["<b>5 · l10_fielddiag</b> &nbsp;<i>action.tool</i><br/>flcc state report l10-fielddiag · ✓ state.completed"]
+  s5["<b>6 · l10_check</b> &nbsp;<i>action.tool</i><br/>flcc state report l10-test --include-alerts · ✓ state.completed"]
+  s6["<b>7 · l11_fielddiag</b> &nbsp;<i>action.tool</i><br/>rlcc state report l11-fielddiag · ✓ state.completed"]
+  s7["<b>8 · l11_check</b> &nbsp;<i>action.tool</i><br/>rlcc state report l11-test --include-alerts · ✓ state.completed"]
+  s8["<b>9 · l12_seatrial</b> &nbsp;<i>action.tool</i><br/>rlcc state report l12-seatrial · ✓ state.completed"]
+  s9["<b>10 · l12_check</b> &nbsp;<i>action.tool</i><br/>rlcc state report l12-test --include-alerts · ✓ state.completed"]
+  s10["<b>11 · baseline_post</b> &nbsp;<i>action.tool</i><br/>metrics · mode=post · compare baseline_pre · ✓ 'delta_within_threshold'"]
+  s11["<b>12 · evidence_review</b> &nbsp;<i>review</i><br/>⏸ engine <b>halts</b> here today · iter-4d operator-advance resumes"]
+  s12["<b>13 · ai_summary</b> &nbsp;<i>ai_assess</i><br/>verdict: pass / fail / needs_review"]
+  s13["<b>14 · operator_signoff</b> &nbsp;<i>signoff</i><br/>final verdict: pass / fail → signed_off"]
+
+  runnote["⏵ engine walks steps 1 + 2 (gatherers)<br/>skips 3–11 (action.tool, no probe wired)<br/>halts at 12 (review = operator-gated)"]:::note
+  zaplabel["🔧 firmware applied here"]:::note
+
+  s1 --> s_fact --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> s9 --> s10 --> s11 --> s12 --> s13
+  s_fact -.- runnote
+  s3 -.- zaplabel
+
+  class s1,s_fact live
+  class s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12,s13 planned
+
+  click s1 call showDetail("r_s1")
+  click s_fact call showDetail("r_sfact")
+  click s2 call showDetail("r_s2")
+  click s3 call showDetail("r_s3")
+  click s4 call showDetail("r_s4")
+  click s5 call showDetail("r_s5")
+  click s6 call showDetail("r_s6")
+  click s7 call showDetail("r_s7")
+  click s8 call showDetail("r_s8")
+  click s9 call showDetail("r_s9")
+  click s10 call showDetail("r_s10")
+  click s11 call showDetail("r_s11")
+  click s12 call showDetail("r_s12")
+  click s13 call showDetail("r_s13")
+${CLASSES}`;
+
+// ============ Diagram 3: ENGINE & WALK (live) ============
+const ENGINE = `flowchart TD
+  post["<b>POST /api/runs</b> → 201<br/>tail-calls engine.Kick"]
+  kick["<b>engine.Kick</b> (idempotent)<br/>register done chan · spawn goroutine"]
+  sem["goroutine: acquire sem slot (cap 8)<br/>runs on <b>background ctx</b> — not the request ctx"]
+  oneoff["one-time setup<br/><i>LoadEvents → load template, load inputs</i>"]
+  loop(("for { … }<br/>loop body"))
+  le2["re-LoadEvents<br/><i>persistence is truth</i>"]
+  stepids["stepIDsFromEvents<br/>→ <b>seen</b> set"]
+  fn{"findNextRunnableStep<br/><i>(tpl, seen, skipped)</i>"}
+  none(["no more runnable steps<br/>→ log &amp; return"])
+  kindq{"step.Kind?"}
+  halt(["⏸ <b>halt</b> at operator-gated kind<br/>review · ai_assess · signoff<br/><i>= evidence_review today</i>"])
+  skipa["no probe_type set<br/>→ add to <b>skipped</b> · loop"]
+  rr["resolveRacks &#123;&#123; inputs.canary_racks &#125;&#125;"]
+  reg{"registry.Get(probe_type)"}
+  notreg["<b>StepFailed</b><br/>probe type not registered"]
+  ss["emit <b>StepStarted</b><br/>→ runs.status = <b>running</b>"]
+  run["<b>probe.Run(ctx, clients, sc)</b>"]
+
+  subgraph AP["alert_probe · gatherer (iter-4b)"]
+    direction TB
+    aploop["for each rack:<br/>AlertClient.ListByRack"]
+    aproll["rollup → per_rack &#123;alerts, max_severity,<br/>count_by_severity&#125; + global max_severity + alerts_clear"]
+    apout["Output &#123;StructuredData, Sources:[alertmanager-stub]&#125;"]
+    aploop --> aproll --> apout
+  end
+
+  subgraph FP["fact_probe · gatherer (iter-4c)"]
+    direction TB
+    fploop["for each rack:<br/>InventoryResolver.ResolveRack"]
+    fproll["per_rack &#123;resolved, facts, error&#125;<br/>+ all_resolved (true iff every rack resolved)"]
+    fpout["Output &#123;StructuredData, Sources:[inventory-stub]&#125;"]
+    fploop --> fproll --> fpout
+  end
+
+  rerr{"error?"}
+  sf["emit <b>StepFailed</b><br/>walk continues · runs.status → failed (projection)"]
+  put["PutEvidence<br/><i>ULID · application/json · payload</i>"]
+  sc["emit <b>StepCompleted</b><br/>evidence_id · <b>no verdict</b>"]
+  dbf["DB read/write failure<br/>→ <b>halts</b> walk"]
+  done["all loop exits return<br/>done chan closes · engine.Wait unblocks"]
+  poll["Operator: GET /api/runs/&#123;id&#125; → events"]
+  evget{"GET …/evidence/&#123;eid&#125;"}
+  e200["200 · probe JSON"]
+  e404["404 · unknown eid"]
+  e403["403 · eid belongs to another run"]
+
+  post --> kick --> sem --> oneoff --> loop
+  loop --> le2 --> stepids --> fn
+  fn -->|none| none --> done
+  fn -->|step| kindq
+  kindq -->|review / ai_assess / signoff| halt --> done
+  kindq -->|probe · no probe_type| skipa --> loop
+  kindq -->|probe · probe_type set| rr --> reg
+  reg -->|missing| notreg --> loop
+  reg -->|found| ss --> run
+  ss -.->|append fails| dbf --> done
+  run -->|probe_type = alert_probe| AP
+  run -->|probe_type = fact_probe| FP
+  AP --> rerr
+  FP --> rerr
+  rerr -->|"ErrSourceUnavailable / nil client / panic"| sf --> loop
+  rerr -->|ok| put
+  put -->|append fails| sf
+  put -->|ok| sc --> loop
+  done --> poll --> evget
+  evget --> e200
+  evget --> e404
+  evget --> e403
+
+  class post,kick,sem,oneoff,loop,le2,stepids,fn,none,kindq,halt,skipa,rr,reg,ss,run,aploop,aproll,apout,fploop,fproll,fpout,put,sc,done,poll,evget,e200 live
+  class sf,notreg,dbf,e404,e403 fail
+
+  click post call showDetail("e_post")
+  click kick call showDetail("e_kick")
+  click sem call showDetail("e_sem")
+  click oneoff call showDetail("e_oneoff")
+  click loop call showDetail("e_loop")
+  click le2 call showDetail("e_le2")
+  click stepids call showDetail("e_stepids")
+  click fn call showDetail("e_fn")
+  click none call showDetail("e_none")
+  click kindq call showDetail("e_kindq")
+  click halt call showDetail("e_halt")
+  click skipa call showDetail("e_skipa")
+  click rr call showDetail("e_rr")
+  click reg call showDetail("e_reg")
+  click notreg call showDetail("e_notreg")
+  click ss call showDetail("e_ss")
+  click run call showDetail("e_run")
+  click aploop call showDetail("e_aploop")
+  click aproll call showDetail("e_aproll")
+  click apout call showDetail("e_apout")
+  click fploop call showDetail("e_fploop")
+  click fproll call showDetail("e_fproll")
+  click fpout call showDetail("e_fpout")
+  click rerr call showDetail("e_rerr")
+  click sf call showDetail("e_sf")
+  click put call showDetail("e_put")
+  click sc call showDetail("e_sc")
+  click dbf call showDetail("e_dbf")
+  click done call showDetail("e_done")
+  click poll call showDetail("e_poll")
+  click evget call showDetail("e_evget")
+  click e200 call showDetail("e_e200")
+  click e404 call showDetail("e_e404")
+  click e403 call showDetail("e_e403")
+${CLASSES}`;
+
+// ============ Diagram 4: CHECKPOINT MODEL (planned) ============
+const CHECK = `flowchart TD
+  cat{"probe Category"}
+  gath["<b>gatherer</b> — evidence, no verdict<br/><i>alert_probe + fact_probe (LIVE today)</i>"]
+  asn["<b>assertion</b> — passes / fails via checkpoint<br/><i>l_test, fielddiag, seatrial (iter-4d+)</i>"]
+  act["<b>action</b> — performs op, reports completion<br/><i>node_zap (iter-4d+)</i>"]
+
+  begin(["assertion / action step begins<br/>e.g. baseline_pre · zap_canary · L10/L11/L12"])
+  action["Invoke <b>action.tool</b> once<br/><i>metrics / flcc / rlcc · args + timeout</i>"]
+  fan{"checkpoint.targets = <b>per_rack</b>"}
+  evalr{"success_when / fail_when / blockers?"}
+  pass["✓ pass"]
+  failr["✗ fail"]
+  block["⚠ blocker → ActionRequired<br/><i>(only zap_canary)</i>"]
+  worst["worst per-rack verdict = <b>step verdict</b><br/><i>passed &lt; warning &lt; failed</i>"]
+  done["<b>StepCompleted &#123;verdict&#125;</b><br/>→ worst-verdict roll-up → run status"]
+  needs["needs the checkpoint expression evaluator<br/>(iter-4d+)"]:::note
+
+  cat --> gath
+  cat --> asn
+  cat --> act
+  asn --> begin
+  act --> begin
+  begin --> action --> fan --> evalr
+  evalr -->|success_when| pass
+  evalr -->|fail_when| failr
+  evalr -->|blocker.when| block
+  pass --> worst
+  failr --> worst
+  block --> worst
+  worst --> done
+  done -.- needs
+
+  class gath live
+  class cat,asn,act,begin,action,fan,evalr,pass,failr,block,worst,done planned
+
+  click cat call showDetail("c_cat")
+  click gath call showDetail("c_gath")
+  click asn call showDetail("c_asn")
+  click act call showDetail("c_act")
+  click begin call showDetail("c_begin")
+  click action call showDetail("c_action")
+  click fan call showDetail("c_fan")
+  click evalr call showDetail("c_eval")
+  click block call showDetail("c_block")
+  click worst call showDetail("c_worst")
+  click done call showDetail("c_done")
+${CLASSES}`;
+
+// ---- node detail content ----
+const DETAILS = {
+  // macro
+  m_op: ["Operator adds racks", "implemented", "An FRO engineer submits <code>POST /api/runs</code> — replaces the old Slack &ldquo;ping Wallace&rdquo; handoff. Body is either legacy <code>{bundle, rack}</code> or canonical <code>{template_id, inputs}</code>. The operator supplies <b>bundle_tag</b>, <b>canary_racks</b>, and <b>requester</b>; everything else is discovered. <i>(created_by is hardcoded &lsquo;wpena&rsquo; today.)</i>"],
+  m_val: ["Validate body and inputs", "implemented", "Reject bad JSON or a both-shapes body → <code>400</code>. <code>normalize()</code> converts legacy to canonical and validates the rack regex. Load the template (<code>422 template_not_found</code> if unknown), then <code>ValidateInputs</code>."],
+  m_rc: ["RunCreated → pending", "implemented", "A ULID run id is minted and a <b>RunCreated</b> event is appended; the store projection inserts the run row at status <b>pending</b>, deriving bundle and rack from the inputs. Events are the source of truth."],
+  m_opf: ["Promote operator facts", "implemented", "Inputs whose id is a registered fact key (today <code>bundle_tag</code>, <code>requester</code>) become a run-scope <b>FactsDiscovered</b> event (source=operator)."],
+  m_res: ["Resolve racks via inventory", "implemented", "Each rack is looked up via <code>inventoryclient.ResolveRack</code> against the injected Resolver (a deterministic stub today). Results are collected into resolved[] / unresolved[] before anything is emitted — that&rsquo;s what makes discovery all-or-nothing."],
+  m_gate: ["All racks resolved?", "implemented", "Unresolved = <code>ErrNotFound</code> or <code>AmbiguousError</code>. Any other inventory error → <code>500</code>. One unresolved rack means no rack facts are emitted and the engine is never kicked."],
+  m_fail: ["FactsDiscoveryFailed → failed", "implemented", "A <b>FactsDiscoveryFailed</b> event flips runs.status to <b>failed</b>; response is <code>422 inventory_unresolved</code>. RunCreated + operator facts are kept for audit. The Kick is skipped on this path. <b>One of two live routes to &lsquo;failed&rsquo;</b> (the other is a probe StepFailed)."],
+  m_rackf: ["Emit per-rack facts", "implemented", "One rack-scope <b>FactsDiscovered</b> per rack (source=inventory) carrying instance_type, sku, variant, gb_generation, region, cluster. <i>Note: this is the discovery pipeline&rsquo;s rack facts. The fact_baseline step (iter-4c) re-snapshots them as evidence on the run timeline.</i>"],
+  m_kick: ["Tail-call engine.Kick → 201", "implemented", "<b>iter-4b.</b> After the facts pipeline succeeds, <code>createRunHandler</code> calls <code>engine.Kick(ctx, runID)</code> and returns <b>201</b> immediately. Kick is fire-and-forget and idempotent. The 422 (unresolved) path returns before this, so a failed-discovery run is never kicked."],
+  m_loop: ["loop · re-read events", "implemented", "<b>iter-4c.</b> <code>runOnce</code>&rsquo;s body is a <code>for { … }</code> loop. Each iteration re-loads events from the store so the &ldquo;already seen&rdquo; set reflects persisted truth, not in-memory caching. The store is the source of truth; the goroutine is just a driver."],
+  m_find: ["findNextRunnableStep", "implemented", "<b>iter-4c.</b> Walks <code>tpl.Steps</code> in order and returns the first step ID that is <i>not</i> in the <code>seen</code> set (built from StepStarted/StepCompleted/StepFailed events) and <i>not</i> in the loop-local <code>skipped</code> set (action.tool steps the engine couldn&rsquo;t run). It does <b>not</b> filter by Kind — the caller decides."],
+  m_none: ["No more runnable → idle exit", "implemented", "Either every step has been seen, or every remaining step is in <code>skipped</code>. Logs &ldquo;walk complete&rdquo; and returns; the run row keeps whatever status the last event set."],
+  m_kindq: ["Route on step.Kind", "implemented", "<b>iter-4c.</b> The caller of <code>findNextRunnableStep</code> branches on the returned Kind: <code>review</code>/<code>ai_assess</code>/<code>signoff</code> → halt; <code>probe</code> with empty <code>probe_type</code> → skip (action.tool-shaped); <code>probe</code> with a probe_type → run. (Other kinds are theoretical; the canonical template uses only these.)"],
+  m_gateh: ["Halts at operator-gated step", "implemented", "<b>iter-4c.</b> The first time the walk hits a <code>review</code>/<code>ai_assess</code>/<code>signoff</code> step it returns from runOnce. In the canonical template that&rsquo;s <code>evidence_review</code> (step 12). The run rests at <b>running</b>; an iter-4d operator-advance endpoint will resume it."],
+  m_skipa: ["Skip action.tool step", "implemented", "<b>iter-4c.</b> A <code>kind: probe</code> step with empty <code>probe_type</code> is shaped like an action.tool step — the engine has no tool dispatcher yet. The step ID is added to the loop-local <code>skipped</code> set so the next iteration finds the step <i>after</i> it, and the walk continues."],
+  m_reg: ["registry.Get(probe_type)", "implemented", "The probe registry is looked up by type name. <code>alert_probe</code> and <code>fact_probe</code> are registered at boot in <code>serve.go</code>. A missing type → <b>StepFailed</b>; the walk continues to the next step."],
+  m_ss: ["StepStarted → running", "implemented", "The engine emits <b>StepStarted</b>; both the store projection and the in-memory fold flip the run to <b>running</b>. If <i>this</i> append itself fails, that&rsquo;s a DB write failure and the walk halts."],
+  m_prun: ["probe.Run — gatherer", "implemented", "<b>iter-4b + 4c.</b> Two registered gatherers run today: <code>alert_probe</code> (per-rack alert rollup) and <code>fact_probe</code> (per-rack inventory snapshot). Neither produces a verdict — both record their structured output as evidence."],
+  m_ok: ["probe ok?", "implemented", "If <code>probe.Run</code> returns an error (source down, nil client, panic) → StepFailed and the walk continues. Otherwise the output is persisted as evidence. <b>Gatherer rule:</b> finding alerts or unresolved racks is <i>not</i> an error — it&rsquo;s data."],
+  m_sf: ["StepFailed · walk continues", "implemented", "<b>iter-4c reframe.</b> The walk does <b>not</b> halt on StepFailed — qac is an observability tool, the rack is going through flcc/rlcc regardless. The store projection still flips <code>runs.status='failed'</code> on a StepFailed event; the walk-level loop ignores that and keeps going to the next step."],
+  m_ev: ["PutEvidence", "implemented", "<b>iter-4b.</b> The probe&rsquo;s structured JSON is written to the <code>evidence</code> table with a ULID id and content-type application/json, FK&rsquo;d to the run. Retrieved later via the evidence endpoint."],
+  m_sc: ["StepCompleted · no verdict", "implemented", "<b>iter-4b + 4c.</b> The engine emits <b>StepCompleted</b> (with evidence_id, duration, sources). For gatherers <b>Verdict is empty</b> — the projection leaves the run at <b>running</b> (no roll-up to passed/failed). Loop continues."],
+  m_advance: ["operator-advance endpoint", "planned", "<b>iter-4d.</b> <code>POST /api/runs/&#123;id&#125;/advance</code> emits an OperatorAdvance event that updates the seen set, so the next Kick&rsquo;s <code>findNextRunnableStep</code> walks past the operator-gated step instead of halting."],
+  m_tool: ["action.tool steps", "planned", "<b>iter-4d+.</b> The metrics / flcc / rlcc steps run their tool and evaluate a checkpoint. Today they&rsquo;re declared in the YAML but the engine skips them. See the &ldquo;Checkpoint model&rdquo; tab."],
+  m_assert: ["assertion probes → verdicts", "planned", "<b>iter-4d+.</b> Assertion/action probes return a verdict (passed/warning/failed); the pure fold ranks worst-wins and maps it to run status. The roll-up logic exists and is unit-tested but has no producer beyond the dormant path today."],
+  m_term: ["passed / warning / failed", "planned", "<b>iter-4d+.</b> Terminal verdict statuses once the canary completes. (Note <code>failed</code> is already reachable today via discovery failure or a probe StepFailed.)"],
+  m_sign: ["operator_signoff", "planned", "<b>iter-4d+.</b> <code>kind: signoff</code> step — operator picks pass/fail + signer details. The fold already maps OperatorAction{signoff} → signed_off, but there&rsquo;s no producer/UI yet."],
+  m_signed: ["signed_off (terminal)", "planned", "The terminal status the whole tool exists to produce — an auditable artifact, eventually with a drafted Slack reply."],
+  m_detail: ["Operator polls run detail", "implemented", "<code>GET /api/runs/{id}</code> returns {run, events}. The StepStarted/StepCompleted/StepFailed events (now multiple per run after iter-4c&rsquo;s walk) appear here. The run-detail page renders them as an events list; the step rail + evidence renderer are frontend catch-up. Live updates (SSE) replace polling in a later iter."],
+  m_evget: ["Follow evidence URL", "implemented", "<b>iter-4b.</b> <code>GET /api/runs/{id}/evidence/{eid}</code> returns the probe&rsquo;s JSON. After iter-4c there are two evidence rows on a healthy walk (alert_baseline and fact_baseline). 200 on match · 404 unknown eid · 403 if the eid belongs to another run."],
+
+  // rail
+  r_s1: ["1 · alert_baseline", "implemented", "<b>kind: probe · probe_type: alert_probe</b> — a <b>gatherer</b>. The engine runs it first on every walk: per-rack alert lookup → evidence, <b>no verdict</b>. timeout 30s is read but not enforced today."],
+  r_sfact: ["2 · fact_baseline", "implemented", "<b>iter-4c.</b> <code>kind: probe · probe_type: fact_probe</code> — second <b>gatherer</b>. Resolves every rack via the inventory client and writes a per-rack <code>{resolved, facts, error}</code> + <code>all_resolved</code> snapshot as evidence. ErrNotFound and AmbiguousError are recorded as <i>data</i> (resolved=false + error) — only an unexpected transport error fails the step. No verdict."],
+  r_s2: ["3 · baseline_pre", "planned", "<b>action.tool</b> (skipped today). metrics · mode=pre · ✓ stdout &lsquo;baseline_ok&rsquo;. The original &ldquo;baseline&rdquo; — becomes a probe in iter-4d+."],
+  r_s3: ["4 · zap_canary", "planned", "<b>action.tool — firmware applied here.</b> <code>flcc workflow run node-zap --rack … --bundle …</code>, multi-rack, 60m. ✓ status=completed · ✗ failed · ⚠ halted → ActionRequired blocker. The only step with a blockers clause."],
+  r_s4: ["5 · l10_fielddiag", "planned", "<b>action.tool.</b> <code>flcc state report --state l10-fielddiag</code>, 18h. NVIDIA single-tray GPU screening. ✓ state.completed."],
+  r_s5: ["6 · l10_check", "planned", "<b>action.tool.</b> <code>flcc state report --state l10-test --include-alerts</code>, 9h. Node-level HPC verification. ✓ state.completed."],
+  r_s6: ["7 · l11_fielddiag", "planned", "<b>action.tool.</b> <code>rlcc state report --state l11-fielddiag</code>, 4h. Whole-rack NVLink-domain diagnostic. ✓ state.completed."],
+  r_s7: ["8 · l11_check", "planned", "<b>action.tool.</b> <code>rlcc state report --state l11-test --include-alerts</code>, 6h. NVLink-domain group test. ✓ state.completed."],
+  r_s8: ["9 · l12_seatrial", "planned", "<b>action.tool.</b> <code>rlcc state report --state l12-seatrial</code>, 1h. Backend misconnect screen. ✓ state.completed."],
+  r_s9: ["10 · l12_check", "planned", "<b>action.tool.</b> <code>rlcc state report --state l12-test --include-alerts</code>, 6h. Backend IB/RoCE fabric performance. ✓ state.completed."],
+  r_s10: ["11 · baseline_post", "planned", "<b>action.tool.</b> metrics · mode=post · compare_to step:baseline_pre, 5m. Re-baselines and diffs vs step 3. ✓ stdout &lsquo;delta_within_threshold&rsquo;."],
+  r_s11: ["12 · evidence_review", "implemented_halt", "<b>review</b> (no tool). <b>The engine halts here today.</b> This is the first operator-gated step kind on the walk — iter-4d&rsquo;s operator-advance endpoint will emit an event that puts this step&rsquo;s id in the &ldquo;seen&rdquo; set so the next Kick steps past it. Gathers the probe results, enriches with patterns + glean, optional rack_notes."],
+  r_s12: ["13 · ai_summary", "planned", "<b>ai_assess.</b> Prompt fw-release-canary.summary.v1 over the probe steps. Verdict ∈ pass / fail / needs_review."],
+  r_s13: ["14 · operator_signoff", "planned", "<b>signoff.</b> Final verdict pass/fail + signer name/role/notes; slack_reply. Maps to terminal signed_off."],
+
+  // engine
+  e_post: ["POST → 201 → Kick", "implemented", "The create handler finishes the facts pipeline, then tail-calls <code>engine.Kick</code> and returns 201. The probe walk runs <i>after</i> the response is sent."],
+  e_kick: ["engine.Kick", "implemented", "Registers a <b>done channel</b> under a mutex <i>before</i> spawning the goroutine (so <code>Wait(runID)</code> right after Kick is race-safe), then <code>wg.Add(1)</code> + go. <b>Idempotent</b>: a second Kick for an in-flight run is a no-op."],
+  e_sem: ["Acquire slot · bg ctx", "implemented", "The goroutine blocks on a counting semaphore (cap <b>8</b> concurrent runs), then runs on <code>context.Background()</code> — deliberately <b>not</b> the request ctx, so a timed-out POST doesn&rsquo;t kill an in-flight walk."],
+  e_oneoff: ["One-time setup", "implemented", "<b>iter-4c.</b> Before the loop: load events once, decode the template, decode the run inputs. These don&rsquo;t change for the lifetime of the run, so no need to re-read them inside the loop."],
+  e_loop: ["Loop body", "implemented", "<b>iter-4c.</b> A <code>for { … }</code> with no breaks except <code>return</code>. Each branch either continues (skip / step done) or returns (no more runnable / operator-gated / DB failure)."],
+  e_le2: ["Re-LoadEvents (per iteration)", "implemented", "<b>iter-4c.</b> The events table is the source of truth. Re-reading it each iteration means the walk works correctly even if events were appended out-of-band (e.g. a future operator-advance event). Costs one query per step; SQLite handles it easily."],
+  e_stepids: ["stepIDsFromEvents", "implemented", "<b>iter-4c.</b> Folds events into a <code>map[string]bool</code> of step IDs that appear in any StepStarted/StepCompleted/StepFailed. Uses the package&rsquo;s <code>KindStep*</code> constants — no raw strings."],
+  e_fn: ["findNextRunnableStep", "implemented", "<b>iter-4c.</b> Pure function: <code>(tpl, seen, skipped) → (step, ok)</code>. Returns the first step in template order whose ID is in neither set. Kind-agnostic — the caller decides what to do with the returned step. Nil maps are safe (Go reads nil maps as zero values)."],
+  e_none: ["None runnable → return", "implemented", "Walk complete: every step is either in <code>seen</code> (already attempted) or <code>skipped</code> (action.tool with no probe). Logs &ldquo;walk complete&rdquo; and returns to <code>e_done</code>."],
+  e_kindq: ["Route on step.Kind", "implemented", "<b>iter-4c.</b> The next step&rsquo;s Kind decides everything: <code>review/ai_assess/signoff</code> → halt; <code>probe</code> + empty probe_type → skip; <code>probe</code> + probe_type → run."],
+  e_halt: ["Halt at operator-gated step", "implemented", "<b>iter-4c.</b> The walk stops cleanly at the first <code>review</code>/<code>ai_assess</code>/<code>signoff</code> step it encounters. Today that&rsquo;s <code>evidence_review</code>. The goroutine returns; no event is emitted for the halt itself. The run row keeps its previous status."],
+  e_skipa: ["Skip · add to skipped set", "implemented", "<b>iter-4c.</b> A probe step with empty <code>probe_type</code> is shaped like an action.tool step — the engine has no tool dispatcher. The step ID goes into a loop-local <code>skippedThisRun</code> map (NOT persisted), then <code>continue</code>. On the next iteration, <code>findNextRunnableStep</code> walks past it."],
+  e_rr: ["resolveRacks", "implemented", "Inflates the literal <code>{{ inputs.canary_racks }}</code> expression into the rack list from the run&rsquo;s inputs. Full templating is a later iter."],
+  e_reg: ["registry.Get(probe_type)", "implemented", "<b>iter-4b + 4c.</b> Two probes registered at boot: <code>alert_probe</code> and <code>fact_probe</code>. A missing type → StepFailed, then the walk continues."],
+  e_notreg: ["StepFailed: not registered", "implemented", "<b>iter-4c.</b> Unknown probe_type → StepFailed with &ldquo;probe type X not registered&rdquo;. The walk does <b>not</b> halt — it continues to the next step. (Yes, runs.status flips to failed via the projection. That&rsquo;s a known wrinkle.)"],
+  e_ss: ["emit StepStarted → running", "implemented", "Persisted via AppendEvent; the store projection sets runs.status=<b>running</b>. If even this append fails, that counts as a DB write failure — the engine emits a best-effort StepFailed and returns (no point continuing with a broken event log)."],
+  e_run: ["probe.Run(ctx, clients, sc)", "implemented", "The engine builds a <code>StepContext</code> {RunID, StepID, Racks, Inputs, Config:nil} and calls the resolved probe (alert_probe or fact_probe) with the shared <code>Clients</code> (AlertClient + InventoryResolver)."],
+
+  // alert_probe internals
+  e_aploop: ["alert_probe · per-rack ListByRack", "implemented", "<b>iter-4b.</b> alert_probe iterates the racks, calling <code>AlertClient.ListByRack</code>. The backend is a deterministic <code>MapAlertClient</code> stub (real Alertmanager is a later iter). A nil-list rack is treated as &ldquo;no alerts.&rdquo;"],
+  e_aproll: ["alert_probe · rollup", "implemented", "<b>iter-4b.</b> Per rack: the alert list, a <code>max_severity</code> (critical &gt; warning &gt; info), and <code>count_by_severity</code>. Globally: the worst max_severity and <code>alerts_clear</code> (true iff every rack is empty)."],
+  e_apout: ["alert_probe · Output", "implemented", "<b>iter-4b.</b> Returns <code>Output{StructuredData (the JSON above), Sources:[\"alertmanager-stub\"], ProbedAt}</code>. No verdict — gatherers don&rsquo;t judge."],
+
+  // fact_probe internals
+  e_fploop: ["fact_probe · per-rack ResolveRack", "implemented", "<b>iter-4c.</b> fact_probe iterates the racks, calling <code>InventoryResolver.ResolveRack</code>. The backend is a deterministic <code>MapResolver</code> stub today. ErrNotFound and AmbiguousError are absorbed per-rack — only unexpected transport errors bubble up to fail the step."],
+  e_fproll: ["fact_probe · rollup", "implemented", "<b>iter-4c.</b> Per rack: <code>{resolved: bool, facts: {instance_type, sku, variant, gb_generation, region, cluster}, error: string}</code>. Globally: <code>all_resolved</code> (true iff every rack resolved cleanly)."],
+  e_fpout: ["fact_probe · Output", "implemented", "<b>iter-4c.</b> Returns <code>Output{StructuredData (the JSON above), Sources:[\"inventory-stub\"], ProbedAt}</code>. No verdict — same gatherer contract as alert_probe."],
+
+  e_rerr: ["probe error?", "implemented", "A transport error (e.g. <code>ErrSourceUnavailable</code> from the alert stub), a nil client, or a panic (caught by a top-level recover) all route to StepFailed and the loop continues. Otherwise → persist evidence."],
+  e_sf: ["emit StepFailed · loop continues", "implemented", "<b>iter-4c reframe.</b> StepFailed is <b>data</b>, not a halt signal. The walk continues to the next step. The projection does flip <code>runs.status='failed'</code> — known wrinkle that doesn&rsquo;t match the observability framing; the walk itself ignores it."],
+  e_put: ["PutEvidence", "implemented", "<b>iter-4b.</b> Writes one <code>evidence</code> row: ULID id, run_id, step_id, content_type application/json, the probe&rsquo;s StructuredData as the payload BLOB. A PutEvidence failure → StepFailed (loop continues)."],
+  e_sc: ["emit StepCompleted", "implemented", "Carries step_id, evidence_id, duration_ms, completed_at, sources — and <b>no verdict</b> for gatherers, so the run stays <b>running</b>. If this append fails the evidence row is orphaned (logged) and the loop continues."],
+  e_dbf: ["DB read/write failure", "implemented", "<b>iter-4c.</b> A failed LoadEvents inside the loop, or a failed StepStarted append, halts the walk. Without a working event log there&rsquo;s no safe way to continue."],
+  e_done: ["goroutine done", "implemented", "Every loop exit returns to the deferred cleanup, which deletes the inflight entry and closes the done channel — so <code>engine.Wait(runID)</code> unblocks. Tests use this; SSE will plug into the same primitive in a later iter."],
+  e_poll: ["GET /api/runs/{id}", "implemented", "The operator polls and sees the multiple StepStarted/StepCompleted events (one pair per gatherer that ran) in the events list, plus status=running."],
+  e_evget: ["GET …/evidence/{eid}", "implemented", "Fetches the stored probe JSON by evidence id."],
+  e_e200: ["200 · probe JSON", "implemented", "Path id matches the evidence row&rsquo;s run_id → the payload is returned with its stored content-type."],
+  e_e404: ["404 · unknown eid", "implemented", "No evidence row with that id (<code>ErrEvidenceNotFound</code>)."],
+  e_e403: ["403 · wrong run", "implemented", "The evidence exists but its run_id doesn&rsquo;t match the path id — cross-run access is refused (codeForbidden)."],
+
+  // checkpoint
+  c_cat: ["Probe category", "planned", "Every probe declares a <code>Category()</code>. The engine branches on it: gatherers just record StepCompleted; assertion/action probes (iter-4d+) produce a verdict. Today only the gatherer path runs."],
+  c_gath: ["gatherer", "implemented", "Captures state → evidence, <b>no verdict</b>. <b>Two live examples today</b>: <code>alert_probe</code> (iter-4b) and <code>fact_probe</code> (iter-4c). Future gatherers: inventory_probe, baseline components."],
+  c_asn: ["assertion", "planned", "<b>iter-4d+.</b> Definitively passes/fails via a checkpoint expression — l_test, fielddiag, seatrial probes. This is the path below."],
+  c_act: ["action", "planned", "<b>iter-4d+.</b> Performs an operation and reports completion vs failure — e.g. node_zap (the firmware apply)."],
+  c_begin: ["assertion/action step", "planned", "<b>iter-4d+.</b> The metrics/flcc/rlcc steps once they become probe_type probes."],
+  c_action: ["Invoke action.tool", "planned", "<b>iter-4d+.</b> The step&rsquo;s <code>action</code> runs its tool once with templated args + a timeout; the output (stdout or JSON) feeds the checkpoint."],
+  c_fan: ["targets = per_rack", "planned", "The checkpoint declares <code>targets: per_rack</code>, so the one action&rsquo;s output is evaluated separately for each rack."],
+  c_eval: ["Evaluate checkpoint", "planned", "<b>iter-4d+</b> (needs the expression evaluator). Per rack: <code>success_when</code> → pass, <code>fail_when</code> → fail, <code>blockers[].when</code> → ActionRequired."],
+  c_block: ["Blocker → ActionRequired", "planned", "Pauses the canary for manual intervention rather than passing/failing. Only <b>zap_canary</b> declares one (status=halted)."],
+  c_worst: ["Worst verdict = step verdict", "planned", "Per-rack verdicts fold worst-wins (passed &lt; warning &lt; failed) — one failing rack fails the step."],
+  c_done: ["StepCompleted{verdict} → status", "planned", "Unlike a gatherer, an assertion/action StepCompleted carries a verdict; the pure fold rolls the worst verdict into run status (passed/warning/failed)."],
+};
+
+const badgeText = { implemented: "Live today", planned: "Planned", partial: "Partial", implemented_halt: "Live today · halt point" };
+
+window.showDetail = (id) => {
+  const d = DETAILS[id];
+  const el = document.getElementById('detail');
+  if (!d) { el.innerHTML = '<p class="hint">No detail for this node.</p>'; return; }
+  const [title, status, body] = d;
+  const badgeClass = status === 'implemented_halt' ? 'implemented' : status;
+  el.innerHTML =
+    '<div id="detail-title">' + title + '</div>' +
+    '<span id="detail-badge" class="' + badgeClass + '">' + (badgeText[status] || status) + '</span>' +
+    '<div id="detail-body">' + body + '</div>';
+};
+
+async function renderAll() {
+  const jobs = [
+    ['d-macro', MACRO, 'g-macro'],
+    ['d-rail', RAIL, 'g-rail'],
+    ['d-engine', ENGINE, 'g-engine'],
+    ['d-check', CHECK, 'g-check'],
+  ];
+  for (const [target, def, gid] of jobs) {
+    try {
+      const { svg, bindFunctions } = await mermaid.render(gid, def);
+      const host = document.getElementById(target);
+      host.innerHTML = svg;
+      if (bindFunctions) bindFunctions(host);
+    } catch (e) {
+      document.getElementById(target).innerHTML =
+        '<pre style="color:#f87171;white-space:pre-wrap">Diagram failed to render:\n' + (e && e.message ? e.message : e) + '</pre>';
+      console.error(e);
+    }
+  }
+}
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.target).classList.add('active');
+  });
+});
+
+renderAll();
+</script>
+</body>
+</html>

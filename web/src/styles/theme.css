@@ -1,0 +1,90 @@
+/* Theme surface tokens + global resets.
+ * Ported verbatim from the design's fwqual.html inline <style> block (it was
+ * never in colors_and_type.css). Drives light/dark via html[data-theme]; the
+ * AppShell sets document.documentElement.dataset.theme. */
+
+/* ---- Theme surface tokens (light is the CoreWeave default) ---- */
+:root,
+html[data-theme='light'] {
+  color-scheme: light;
+  --cw-bg-canvas: #fcfcfe;
+  --fw-surface: #ffffff;
+}
+/* ---- Hand-tuned dark theme: charcoal surfaces, electric-blue accent ---- */
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --cw-bg-canvas: #101218;
+  --cw-bg-header: #161821;
+  --fw-surface: #1c1f29;
+  /* neutral ramp, re-pitched for a dark surface */
+  --cw-gray-950: #eceef5; /* primary text */
+  --cw-gray-900: #c3c6d2; /* secondary / body */
+  --cw-gray-700: #9296a4; /* muted labels */
+  --cw-gray-600: #7d8190;
+  --cw-gray-500: #5a5e6c; /* scrollbar thumb */
+  --cw-gray-400: #2f3340; /* borders / shell seam */
+  --cw-gray-300: #3a3e4c; /* timeline lines */
+  --cw-gray-200: #282c38; /* subtle dividers */
+  --cw-gray-100: #242834; /* table head / chips / tags */
+  --cw-gray-50: #1f2330; /* row hover */
+  /* blue accents for dark */
+  --cw-blue-100: #18213f;
+  --cw-blue-200: #1d2950;
+  --cw-blue-300: #243466;
+  --cw-blue-400: #2c3f7a;
+  --cw-blue-950: #c8d5ff;
+  /* status soft tints + readable foregrounds */
+  --cw-green-50: #122019;
+  --cw-green-100: #15281e;
+  --cw-green-300: #2c5642;
+  --status-success-fg: #4cdc9b;
+  --cw-yellow-50: #221d0c;
+  --cw-yellow-100: #2c2410;
+  --cw-yellow-300: #5f5020;
+  --cw-yellow-700: #e7c25c;
+  --status-warning-fg: #f2cb60;
+  --cw-red-50: #241310;
+  --cw-red-100: #2e1813;
+  --cw-red-300: #5f2c23;
+  --cw-red-700: #ff8568;
+  --status-danger-fg: #ff8d6e;
+}
+/* keep the CoreWeave wordmark legible on a dark header */
+html[data-theme='dark'] header svg g path {
+  fill: var(--cw-gray-950);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--cw-gray-400);
+}
+#root {
+  height: 100vh;
+}
+* {
+  box-sizing: border-box;
+}
+::selection {
+  background: var(--cw-blue-300);
+}
+@keyframes fwspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* tidy scrollbars to match the calm console aesthetic */
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--cw-gray-500);
+  border-radius: 6px;
+  border: 3px solid var(--cw-bg-canvas, #fcfcfe);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

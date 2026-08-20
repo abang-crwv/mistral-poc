@@ -1,0 +1,7 @@
+max by (cluster_org, cluster, zone, nvlink_domain, severity, alertname) (
+  ALERTS{
+    alertstate="firing",
+    nvlink_domain=~"{nvlink_domain}",
+    alertname=~"NVLinkDomainProductionNodeCountLow|NVLinkDomainDriverVersionMismatch|NVLinkDomainNodesInHold"
+  }
+)

@@ -1,0 +1,7 @@
+min by (alertname, alertstate) (
+  ALERTS{node="", nvlink_domain=~"{nvlink_domain}", alertstate=~"firing|pending"} * 0 + 1
+)
+or
+min by (alertname, alertstate) (
+  ALERTS{node="", rack=~"{rack}", alertstate=~"firing|pending"} * 0 + 1
+)
